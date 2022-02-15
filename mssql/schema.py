@@ -308,7 +308,10 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                     old_field.column,
                 ))
             for constraint_name in constraint_names:
-                self.execute(self._delete_constraint_sql(self.sql_delete_unique, model, constraint_name))
+                # If the old field is nullable, it will be using a filtered index instead of a unique constraint to
+                # enforce uniqueness.
+                self.execute(self._delete_constraint_sql(
+                    self.sql_delete_index if old_field.null else self.sql_delete_unique, model, constraint_name))
         # Drop incoming FK constraints if the field is a primary key or unique,
         # which might be a to_field target, and things are going to change.
         drop_foreign_keys = (

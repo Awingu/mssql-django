@@ -171,7 +171,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         news = {tuple(fields) for fields in new_unique_together}
         # Deleted uniques
         for fields in olds.difference(news):
-            self._delete_composed_index(model, fields, {'unique': True}, self.sql_delete_index)
+            self._delete_composed_index(model, fields, {'unique': True}, self.sql_delete_unique)
         # Created uniques
         if django_version >= (4, 0):
             for field_names in news.difference(olds):

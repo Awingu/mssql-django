@@ -161,6 +161,27 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         new_type = self._set_field_new_type_null_status(old_field, new_type)
         return super()._alter_column_type_sql(model, old_field, new_field, new_type)
 
+    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):
+        '''
+        Modified from django.db.backends.base.schema.BaseDatabaseSchemaEditor._delete_composed_index,
+        so we can use the modified self._db_table_constraint_names that has support for unique_constraint.
+        '''
+        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}
+        meta_index_names = {constraint.name for constraint in model._meta.indexes}
+        columns = [model._meta.get_field(field).column for field in fields]
+        constraint_names = self._db_table_constraint_names(
+            # This modified function uses the db table name instead of model name as its first argument.
+            model._meta.db_table, columns, exclude=meta_constraint_names | meta_index_names,
+            **constraint_kwargs
+        )
+        if len(constraint_names) != 1:
+            raise ValueError("Found wrong number (%s) of constraints for %s(%s)" % (
+                len(constraint_names),
+                model._meta.db_table,
+                ", ".join(columns),
+            ))
+        self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))
+
     def alter_unique_together(self, model, old_unique_together, new_unique_together):
         """
         Deal with a model changing its unique_together. The input
@@ -171,7 +192,18 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
         news = {tuple(fields) for fields in new_unique_together}
         # Deleted uniques
         for fields in olds.difference(news):
-            self._delete_composed_index(model, fields, {'unique': True}, self.sql_delete_unique)
+            try:
+                self._delete_composed_index(model, fields, {'unique': True, 'unique_constraint': False},
+                                            self.sql_delete_index)
+            except ValueError:
+                try:
+                    self._delete_composed_index(model, fields, {'unique': True, 'unique_constraint': True},
+                                                self.sql_delete_unique)
+                except ValueError:
+                    raise ValueError(
+                        "Failed to delete unique_together for {:!}, both as a unique index and as a constraint",
+                        fields)
+
         # Created uniques
         if django_version >= (4, 0):
             for field_names in news.difference(olds):
@@ -227,7 +259,7 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
 
     def _db_table_constraint_names(self, db_table, column_names=None, column_match_any=False,
                                    unique=None, primary_key=None, index=None, foreign_key=None,
-                                   check=None, type_=None, exclude=None):
+                                   check=None, type_=None, exclude=None, unique_constraint=None):
         """
         Return all constraint names matching the columns and conditions. Modified from base `_constraint_names`
         `any_column_matches`=False: (default) only return constraints covering exactly `column_names`
@@ -246,6 +278,8 @@ class DatabaseSchemaEditor(BaseDatabaseSchemaEditor):
                 column_match_any and any(col in infodict['columns'] for col in column_names)
             ):
                 if unique is not None and infodict['unique'] != unique:
+                    continue
+                if unique_constraint is not None and infodict.get('unique_constraint') != unique_constraint:
                     continue
                 if primary_key is not None and infodict['primary_key'] != primary_key:
                     continue

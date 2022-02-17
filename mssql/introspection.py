@@ -291,6 +291,7 @@ WHERE a.TABLE_SCHEMA = {get_schema_name()} AND a.TABLE_NAME = %s AND a.CONSTRAIN
             SELECT
                 i.name AS index_name,
                 i.is_unique,
+                i.is_unique_constraint,
                 i.is_primary_key,
                 i.type,
                 i.type_desc,
@@ -316,12 +317,13 @@ WHERE a.TABLE_SCHEMA = {get_schema_name()} AND a.TABLE_NAME = %s AND a.CONSTRAIN
                 ic.index_column_id ASC
         """, [table_name])
         indexes = {}
-        for index, unique, primary, type_, desc, order, column in cursor.fetchall():
+        for index, unique, unique_constraint, primary, type_, desc, order, column in cursor.fetchall():
             if index not in indexes:
                 indexes[index] = {
                     "columns": [],
                     "primary_key": primary,
                     "unique": unique,
+                    "unique_constraint": unique_constraint,
                     "foreign_key": None,
                     "check": False,
                     "index": True,

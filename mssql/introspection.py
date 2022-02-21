@@ -253,9 +253,14 @@ WHERE a.TABLE_SCHEMA = {get_schema_name()} AND a.TABLE_NAME = %s AND a.CONSTRAIN
                 constraints[constraint] = {
                     "columns": [],
                     "primary_key": kind.lower() == "primary key",
+                    # In the sys.indexes table, primary key indexes have is_unique_constraint as false,
+                    # but is_unique as true.
                     "unique": kind.lower() in ["primary key", "unique"],
+                    "unique_constraint": kind.lower() == "unique",
                     "foreign_key": (ref_table, ref_column) if kind.lower() == "foreign key" else None,
                     "check": False,
+                    # Potentially misleading: primary key and unique constraints still have indexes attached to them.
+                    # Should probably be updated with the additional info from the sys.indexes table we fetch later on.
                     "index": False,
                 }
             # Record the details
@@ -280,6 +285,7 @@ WHERE a.TABLE_SCHEMA = {get_schema_name()} AND a.TABLE_NAME = %s AND a.CONSTRAIN
                     "columns": [],
                     "primary_key": False,
                     "unique": False,
+                    "unique_constraint": False,
                     "foreign_key": None,
                     "check": True,
                     "index": False,
